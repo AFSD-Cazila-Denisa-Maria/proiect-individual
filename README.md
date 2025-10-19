@@ -18,4 +18,4 @@ Acest proiect implementează un solver automat pentru jocul **Hangman**. Codul g
 1. Pune fișierul CSV în folderul `data`  
 2. Rulează scriptul:
 ```bash
-python solve_hangman_final.py
+python solve_hangman.py
