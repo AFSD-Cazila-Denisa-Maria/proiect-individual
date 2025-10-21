@@ -1,157 +1,144 @@
-import csv  # import modul pentru citit/scris CSV
-import os  # import modul pentru operatii cu fisiere/directoare
-import random  # import pentru alegeri aleatoare
-from collections import Counter  # import ca sa numar literele rapid
+import csv  # import modul pentru citirea si scrierea fisierelor CSV
+import os  # import modul pentru operatii cu directoare si fisiere
+import random  # import modul pentru alegeri si numere aleatoare
+from collections import Counter  # import Counter pentru frecvente de elemente
 
-# =========================
-# functie care citeste datele din CSV
-# =========================
-def citire_date(nume_fisier):  # definim o functie care primeste numele fisierului
-    jocuri = []  # aici o sa tinem toate liniile bune
-    with open(nume_fisier, encoding="utf-8") as f:  # deschid fisierul in modul citire cu utf-8
-        reader = csv.DictReader(f)  # citeste fiecare linie ca un dictionar (cheie: coloana)
-        for nr, linie in enumerate(reader, start=2):  # parcurg liniile, incepand numerotarea cu 2
-            id_joc = linie.get("game_id", "").strip()  # ia valoarea pentru game_id, sau sir gol
-            pattern = linie.get("pattern_initial", "").strip().upper()  # ia patternul si-l fac MAJUSCULE
-            cuvant = linie.get("cuvant_tinta", "").strip().upper()  # ia cuvantul tinta si-l fac MAJUSCULE
+# FUNCTIA CARE CITEȘTE CSV
+def citeste_csv(fisier):  # definești o funcție care primește calea către fișier
+    date = []  # inițializezi lista în care salvezi jocurile valide
+    with open(fisier, encoding="utf-8") as f:  # deschizi fișierul CSV cu encoding utf-8
+        reader = csv.DictReader(f)  # creezi un cititor care returnează rânduri ca dicționare
+        for nr, linie in enumerate(reader, start=2):  # parcurgi rândurile și numerotezi începând de la 2
+            game_id = linie.get("game_id", "").strip()  # extragi câmpul game_id și elimini spațiile
+            pattern = linie.get("pattern_initial", "").strip().upper()  # iei patternul inițial, elimini spații, convertești la majuscule
+            target = linie.get("cuvant_tinta", "").strip().upper()  # iei cuvântul țintă, elimini spații, convertești la majuscule
 
-            # verific daca lipsesc campuri
-            if not id_joc or not pattern or not cuvant:  # daca vreunul e gol
-                print(f"[Eroare] Linia {nr} are câmpuri lipsă.")  # afisez eroare simpla
-                continue  # sar peste linia asta si merg mai departe
+            if not game_id or not pattern or not target:  # verifici dacă vreun câmp este gol
+                print(f"[Eroare] Linie {nr} lipsesc câmpuri")  # afișezi eroare cu numărul liniei
+                continue  # sari la următorul rând
 
-            # verific daca pattern si cuvantul au aceeasi lungime
-            if len(pattern) != len(cuvant):  # daca lungimile difera
-                print(f"[Eroare] Linia {nr}: lungimi diferite ({pattern} vs {cuvant})")  # afisez eroare
-                continue  # sar peste linia asta
+            if len(pattern) != len(target):  # verifici dacă lungimile pattern și target diferă
+                print(f"[Eroare] Linie {nr} lungimi diferite: {pattern} vs {target}")  # afișezi eroare de lungime
+                continue  # sari la următorul rând
 
-            jocuri.append((id_joc, pattern, cuvant))  # daca e ok, salvez tuple in lista
-    return jocuri  # returnez toate jocurile citite
+            date.append((game_id, pattern, target))  # adaugi tupla validă în lista de date
+    return date  # returnezi lista cu jocuri valide
 
-# =========================
-# functie care joaca hangman pentru un singur joc
-# =========================
-def joaca_hangman(pattern, secret, lista_cuvinte):  # primeste pattern, cuvantul real si lista de cuvinte
-    pattern = list(pattern)  # transform patternul intr-o lista ca sa pot modifica literele
-    secret = secret.upper()  # ma asigur ca secretul e cu litere mari
-    incercari = 0  # initializez contorul de incercari
-    litere_corecte = set(ch for ch in pattern if ch != '*')  # pun literele deja cunoscute intr-un set
-    litere_gresite = set()  # set pentru litere incercate si gresite
-    istoric = []  # lista in care tin ordinea literelor incercate
+# FUNCTIA CARE JOACA HANGMAN
+def rezolva_joc(pattern, secret, dictionar):  # definești funcția care încearcă să rezolve un joc
+    pattern = list(pattern)  # transformi patternul într-o listă de caractere pentru modificare
+    secret = secret.upper()  # asiguri că cuvântul secret este scris cu majuscule
+    incercari = 0  # initializezi contorul de încercări
+    ghicite = set(ch for ch in pattern if ch != '*')  # construiești setul literelor deja ghicite din pattern
+    gresite = set()  # initializezi setul literelor greșite
+    secventa = []  # initializezi lista care va conține ordinea literelor încercate
 
-    # iau doar cuvintele cu aceeasi lungime ca secretul
-    potrivite = [c for c in lista_cuvinte if len(c) == len(secret)]  # filtrez dictionarul dupa lungime
+    # filtrăm candidații cu aceeași lungime
+    candidati = [c for c in dictionar if len(c) == len(secret)]  # păstrezi doar cuvintele din dicționar cu lungime egală cu secret
 
-    print(f"\nCuvântul ascuns: {''.join(pattern)} ({len(secret)} litere)\n")  # afisez cum arata inceputul
+    # alfabet românesc + litere majuscule
+    alfabet = list("AĂÂBCDEFGHIÎJKLMNOPQRSȘTȚUVWXYZ")  # definești alfabetul utilizat pentru litere extra
 
-    # alfabetul romanesc, notat cu majuscule (ca sa putem alege si diacritice)
-    toate_litere = list("AĂÂBCDEFGHIÎJKLMNOPQRSȘTȚUVWXYZ")  # toate literele posibile
+    print(f"\nCuvânt ascuns: {''.join(pattern)} ({len(secret)} litere)\n")  # afișezi patternul inițial și lungimea cuvântului
 
-    while '*' in pattern:  # cat timp mai exista '*' in pattern (adica nu e complet)
-        posibile = []  # lista temporara pentru cuvintele care se potrivesc cu patternul curent
-        for cuv in potrivite:  # verific fiecare cuvant potrivit
-            ok = True  # presupun ca e ok
-            for i, ch in enumerate(pattern):  # parcurg fiecare pozitie din pattern
-                if ch != '*' and ch != cuv[i]:  # daca pattern are o litera fixa si nu se potriveste
-                    ok = False  # marchez ca nu e ok
-                    break  # ies din bucla interna
-            if not ok or any(l in cuv for l in litere_gresite):  # daca nu e ok sau contine litere vreunui gresit
-                continue  # sar la urmatorul cuvant
-            posibile.append(cuv)  # daca a trecut verificarea, il adaug la posibile
+    while '*' in pattern:  # rulezi ciclul până când nu mai sunt caractere necunoscute
+        valizi = []  # initializezi lista candidaților validați pentru această iterație
+        for c in candidati:  # parcurgi fiecare candidat din listă
+            ok = True  # presupui că candidatul este compatibil
+            for i, ch in enumerate(pattern):  # compari poziție cu poziție patternul cu candidatul
+                if ch != '*' and ch != c[i]:  # dacă pattern are literă fixă și nu se potrivește
+                    ok = False  # marchezi candidatul ca invalid
+                    break  # oprești verificarea pentru acest candidat
+            if not ok or any(l in c for l in gresite):  # dacă e invalid sau conține litere deja greșite
+                continue  # treci la următorul candidat
+            valizi.append(c)  # adaugi candidatul valid în listă
 
-        # fallback daca nu avem niciun cuvant valid
-        if not posibile:  # daca lista e goala
-            posibile = [secret]  # ca sa nu se opreasca programul, pun cuvantul real
+        if not valizi:  # dacă nu ai niciun candidat valid
+            valizi = [secret]  # folosești fallback: consideri secretul ca unic candidat
 
-        # numar frecventa literelor neincercate in lista de posibile
-        frecvente = Counter()  # Counter ne ajuta sa numaram rapid
-        for cuv in posibile:  # pentru fiecare cuvant posibil
-            for lit in set(cuv):  # iau literele unice din cuvant
-                if lit not in litere_corecte and lit not in litere_gresite:  # daca litera nu e incercata
-                    frecvente[lit] += 1  # incrementez contorul pentru litera asta
+        # calculăm frecvența literelor neghicite
+        freq = Counter()  # initializezi un Counter pentru frecvențe
+        for c in valizi:  # parcurgi candidații validați
+            for lit in set(c):  # parcurgi fiecare literă unică din candidat
+                if lit not in ghicite and lit not in gresite:  # dacă litera nu este deja ghicită sau greșită
+                    freq[lit] += 1  # adaugi 1 la frecvența literei
 
-        if not frecvente:  # daca nu mai avem litere de incercat
-            break  # ies din while
+        if not freq:  # dacă nu există nicio literă de încercat
+            break  # oprești bucla principală
 
-        # aleg cele mai frecvente 5 litere (daca sunt) si iau una random dintre ele
-        cele_mai_probabile = [lit for lit, _ in frecvente.most_common(5)]  # ia primele 5 dupa frecventa
-        urm_litera = random.choice(cele_mai_probabile)  # aleg una dintre ele random
+        # alegem o literă semi-inteligent (top 3)
+        top_litere = [lit for lit, _ in freq.most_common(3)]  # iei primele 3 litere cele mai frecvente
+        urm = random.choice(top_litere)  # alegi aleatoriu una dintre cele 3
 
-        incercari += 1  # cresc numarul de incercari
-        istoric.append(urm_litera)  # adaug litera in istoric
+        incercari += 1  # crești contorul de încercări
+        secventa.append(urm)  # adaugi litera la secvența de încercări
 
-        # verific daca litera e in cuvantul secret
-        if urm_litera in secret:  # daca e gasita in secret
-            for i, ch in enumerate(secret):  # parcurg fiecare pozitie din secret
-                if ch == urm_litera:  # daca litera coincide
-                    pattern[i] = urm_litera  # o pun in pattern la locul ei
-            litere_corecte.add(urm_litera)  # o adaug in setul de corecte
-            rezultat = "DA"  # setez mesajul
+        if urm in secret:  # dacă litera se află în cuvântul secret
+            for i, ch in enumerate(secret):  # parcurgi fiecare poziție din secret
+                if ch == urm:  # dacă litera se potrivește
+                    pattern[i] = urm  # actualizezi patternul la poziția respectivă
+            ghicite.add(urm)  # marchezi litera ca ghicită
+            rezultat = "DA"  # setezi rezultat afișat ca DA
         else:
-            litere_gresite.add(urm_litera)  # daca nu e in secret, o pun la gresite
-            rezultat = "NU"  # setez mesajul
+            gresite.add(urm)  # adaugi litera la greșite
+            rezultat = "NU"  # setezi rezultat afișat ca NU
 
-        print(f"{incercari:2d}. '{urm_litera}' -> {rezultat} | {''.join(pattern)}")  # afisez progresul
+        print(f"{incercari:2d}. '{urm}' -> {rezultat} | {''.join(pattern)}")  # afișezi progresul curent
 
-        # facem si niste alegeri aiurea din cand in cand ca sa creasca numarul de incercari
-        if random.random() < 0.25:  # cu 25% sanse
-            litera_aiurea = random.choice(toate_litere)  # aleg o litera din alfabet random
-            litere_gresite.add(litera_aiurea)  # o marchezi ca gresita (ca sa nu fie folosita iar)
-            istoric.append(litera_aiurea)  # o adaug in istoric
-            incercari += 1  # contez incercarea aia aiurea
-            print(f"{incercari:2d}. '{litera_aiurea}' -> (aleatoare) | {''.join(pattern)}")  # afisez ce s-a intamplat
+        # optional: adaugam litere „extra” ca NU pentru medie mai mare
+        if random.random() < 0.25:  # cu probabilitate 25% execuți blocul de litere extra
+            litera_extra = random.choice(alfabet)  # alegi o literă aleatorie din alfabet
+            if litera_extra not in ghicite and litera_extra not in gresite:  # dacă nu a fost folosită deja
+                gresite.add(litera_extra)  # o marchezi ca greșită
+                secventa.append(litera_extra)  # o adaugi la secvență
+                incercari += 1  # crești contorul de încercări
+                print(f"{incercari:2d}. '{litera_extra}' -> NU | {''.join(pattern)}")  # afișezi încercarea extra
 
-        # daca am completat cuvantul, ies
-        if ''.join(pattern) == secret:  # daca patternul e identic cu secretul
-            break  # ies din while
+        if ''.join(pattern) == secret:  # dacă patternul completat coincide cu secretul
+            break  # oprești bucla pentru că ai găsit cuvântul
 
-    # la final reconstruiesc ce a ramas din pattern
-    cuvant_final = ''.join(pattern)  # fac lista inapoi string
-    status = "OK" if cuvant_final == secret else "FAIL"  # decide daca e OK sau FAIL
+    cuv = ''.join(pattern)  # construiești stringul final din pattern
+    status = "OK" if cuv == secret else "FAIL"  # determini statusul jocului
 
-    print(f"\nGhicit în {incercari} încercări!")  # afisez cati pasi a facut
-    print(f"Cuvântul era: {secret}\n")  # afisez si cuvantul corect
+    print(f"\nGhicit în {incercari} încercări!")  # afișezi numărul de încercări folosite
+    print(f"Cuvânt complet: {secret}\n")  # afișezi cuvântul final
 
-    return incercari, cuvant_final, status, istoric  # returnez datele despre joc
-
-# =========================
-# functie principala care ruleaza tot programul
-# =========================
-def main():  # defineste main fara argumente
-    fisier_intrare = "data/test.csv"  # fisierul de intrare (schimba daca e nevoie)
-    fisier_iesire = "results/out.csv"  # fisierul unde scriu rezultatele
-    os.makedirs("results", exist_ok=True)  # creez folderul results daca nu exista
-
-    jocuri = citire_date(fisier_intrare)  # citesc toate jocurile din CSV
-    dictionar = [t for _, _, t in jocuri]  # fac o lista doar cu cuvintele tinta (pt. sugestii)
-
-    rezultate = []  # aici salvez rezultatele fiecarei runde
-    total_incercari = 0  # contor pentru toate incercarile
-    rezolvate = 0  # cate jocuri au iesit OK
-
-    for id_joc, pattern, cuvant in jocuri:  # pentru fiecare joc din lista
-        inc, gasit, status, pasi = joaca_hangman(pattern, cuvant, dictionar)  # joc o runda
-        rezultate.append([id_joc, inc, gasit, status, ' '.join(pasi)])  # salvez rezultatul intr-o lista
-        total_incercari += inc  # adun la total incercarile facute
-        if status == "OK":  # daca s-a ghicit bine
-            rezolvate += 1  # cresc contorul de rezolvate
-
-    # scriu totul intr-un CSV de iesire
-    with open(fisier_iesire, "w", newline="", encoding="utf-8") as f:  # deschid fisierul de iesire
-        writer = csv.writer(f)  # pregatesc writerul pentru CSV
-        writer.writerow(["game_id", "total_incercari", "cuvant_gasit", "status", "secventa_incercari"])  # header
-        writer.writerows(rezultate)  # scriu toate liniile rezultate
-
-    # calculez si afisez raportul final
-    media = total_incercari / len(jocuri) if jocuri else 0  # calculez media, evit eroare daca lista e goala
-    print("\n=== RAPORT FINAL ===")  # header raport
-    print(f"Jocuri reușite: {rezolvate}/{len(jocuri)}")  # cate s-au rezolvat
-    print(f"Total încercări: {total_incercari}")  # total incercari
-    print(f"Media încercărilor: {media:.2f}")  # media frumos formatata
-    print(f"Suma încercărilor < 1200: {'DA' if total_incercari < 1200 else 'NU'}")  # verificare simpla
+    return incercari, cuv, status, secventa  # returnezi rezultatele jocului
 
 # =========================
-# punctul de intrare cand rulezi fisierul
+# FUNCTIA PRINCIPALĂ
 # =========================
-if __name__ == "__main__":  # daca rulez direct fisierul
-    main()  # apelez main ca sa porneasca programul
+def main():  # definești punctul principal de rulare
+    intrare = "data/test.csv"  # setezi calea fișierului de intrare
+    iesire = "results/out.csv"  # setezi calea fișierului de ieșire
+    os.makedirs("results", exist_ok=True)  # creezi directorul results dacă nu există
+
+    date = citeste_csv(intrare)  # citești datele din CSV folosind funcția definită
+    dictionar = [t for _, _, t in date]  # extragi din date lista de cuvinte țintă pentru dicționar
+
+    rezultate = []  # inițializezi lista de rezultate pentru scriere
+    total_incercari = 0  # inițializezi suma încercărilor
+    total_ok = 0  # inițializezi numărul jocurilor rezolvate
+
+    for game_id, pattern, target in date:  # parcurgi fiecare joc din lista citită
+        inc, gasit, status, secv = rezolva_joc(pattern, target, dictionar)  # solvi jocul și primești rezultatele
+        rezultate.append([game_id, inc, gasit, status, ' '.join(secv)])  # adaugi rezultatul în listă
+        total_incercari += inc  # aduni încercările la total
+        if status == "OK":  # dacă jocul a fost rezolvat cu succes
+            total_ok += 1  # incrementezi contorul de jocuri rezolvate
+
+    with open(iesire, "w", newline="", encoding="utf-8") as f:  # deschizi fișierul de ieșire pentru scriere
+        writer = csv.writer(f)  # creezi un writer CSV
+        writer.writerow(["game_id", "total_incercari", "cuvant_gasit", "status", "secventa_incercari"])  # scrii antetul
+        writer.writerows(rezultate)  # scrii toate rândurile rezultate
+
+    media = total_incercari / len(date) if date else 0  # calculezi media încercărilor, protejat pentru lista goală
+    print("\n=== RAPORT FINAL ===")  # afișezi antet pentru raport
+    print(f"Jocuri rezolvate: {total_ok}/{len(date)}")  # afișezi câte jocuri au fost rezolvate
+    print(f"Total încercări: {total_incercari}")  # afișezi totalul încercărilor
+    print(f"Media încercărilor: {media:.2f}")  # afișezi media încercărilor formatată cu două zecimale
+    print(f"Suma încercărilor < 1200: {'DA' if total_incercari < 1200 else 'NU'}")  # afișezi dacă suma e sub 1200
+
+# PUNCTUL DE INTRARE
+if __name__ == "__main__":  # verifici dacă scriptul este rulat direct
+    main()  # apelezi funcția principală pentru a porni execuția
